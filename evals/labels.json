@@ -1,0 +1,35 @@
+{
+  "sample_01": [{"line": 5, "category": "security", "severity": "P0", "keyword": "注入"}],
+  "sample_02": [{"line": 3, "category": "security", "severity": "P0", "keyword": "密钥"}],
+  "sample_03": [{"line": 5, "category": "security", "severity": "P0", "keyword": "路径"}],
+  "sample_04": [{"line": 7, "category": "security", "severity": "P1", "keyword": "日志"}],
+  "sample_05": [{"line": 5, "category": "security", "severity": "P0", "keyword": "注入"}],
+  "sample_06": [{"line": 7, "category": "performance", "severity": "P1", "keyword": "循环"}],
+  "sample_07": [{"line": 7, "category": "performance", "severity": "P1", "keyword": "循环"}],
+  "sample_08": [{"line": 5, "category": "performance", "severity": "P1", "keyword": "分页"}],
+  "sample_09": [{"line": 6, "category": "performance", "severity": "P2", "keyword": "索引"}],
+  "sample_10": [{"line": 7, "category": "style", "severity": "P1", "keyword": "吞"}],
+  "sample_11": [{"line": 5, "category": "style", "severity": "P1", "keyword": "事务"}],
+  "sample_12": [{"line": 5, "category": "style", "severity": "P3", "keyword": "变量名"}],
+  "sample_13": [],
+  "sample_14": [],
+  "sample_15": [],
+  "sample_16": [],
+  "sample_17": [],
+  "sample_18": [],
+  "sample_19": [],
+  "sample_20": [],
+  "sample_21": [
+    {"line": 8, "category": "security", "severity": "P0", "keyword": "注入"},
+    {"line": 11, "category": "style", "severity": "P1", "keyword": "吞"}
+  ],
+  "sample_22": [
+    {"line": 8, "category": "security", "severity": "P1", "keyword": "校验"},
+    {"line": 9, "category": "security", "severity": "P1", "keyword": "第三方"}
+  ],
+  "sample_23": [],
+  "sample_24": [
+    {"line": 2, "category": "style", "severity": "P2", "keyword": "税率"}
+  ],
+  "sample_25": []
+}
