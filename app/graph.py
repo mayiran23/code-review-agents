@@ -20,7 +20,7 @@ def build_graph():
     #3:连线
     g.add_edge(START,"parse")
     g.add_edge("parse","review")
-    g.add_edge("review","parse")
+    g.add_edge("review","report")
     g.add_edge("report",END)
 
     #4:编译：把定义变成能invoke的对象
