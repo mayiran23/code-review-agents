@@ -1,0 +1,46 @@
+#!/bin/sh
+# code-review-agents · pre-commit hook
+#
+# 安装：把本文件复制到【目标项目】的 .git/hooks/pre-commit，并加执行权限
+#   cp hooks/pre-commit /path/to/your-project/.git/hooks/pre-commit
+#   chmod +x /path/to/your-project/.git/hooks/pre-commit
+#
+# 跳过检查：git commit --no-verify
+#
+# 关键设计：
+#   1. 用 git diff --cached，只审「本次要提交的内容」，
+#      而不是工作区所有未提交的改动（那会把无关文件也拖进来）。
+#   2. 先把 diff 导出到临时文件，再 cd 到工具目录。
+#      因为 main.py 依赖项目内的 app 包，必须在工具目录下执行；
+#      而 cd 之后 git diff 就指向工具仓库了，所以必须先导出。
+
+CR_DIR="/d/mayiran-work/projects/code-review-agents"
+TMP_DIFF="/tmp/cr-precommit-$$.diff"
+
+# 1. 导出本次提交的内容
+git diff --cached > "$TMP_DIFF" 2>/dev/null
+
+# 没有暂存内容（比如只提交空 commit），直接放行
+if [ ! -s "$TMP_DIFF" ]; then
+  rm -f "$TMP_DIFF"
+  exit 0
+fi
+
+# 2. 切到工具目录执行
+cd "$CR_DIR" || { rm -f "$TMP_DIFF"; exit 0; }
+
+# --quiet 只打一行结论，避免每次 commit 刷一屏报告
+.venv/Scripts/python.exe main.py review --diff "$TMP_DIFF" --quiet
+STATUS=$?
+
+rm -f "$TMP_DIFF"
+
+# 3. 有 P0 就阻止提交
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "❌ 发现 P0 级问题，提交已阻止。"
+  echo "   确认要提交请用：git commit --no-verify"
+  exit 1
+fi
+
+exit 0
