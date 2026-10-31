@@ -50,6 +50,10 @@ git diff ──→ parse ─────┼──→ performance  ──┼─�
 ## 项目结构
 
 ```
+main.py                   # CLI 入口（argparse）
+hooks/
+└── pre-commit            # git hook 模板（复制到目标项目的 .git/hooks 启用）
+
 app/
 ├── state.py              # ReviewState：流水线共享状态（含 reducer）
 ├── graph.py              # 图装配：三路并行 + 汇合 + 人工闸门
@@ -150,7 +154,36 @@ out = g.invoke(Command(resume="这两条先不改，记录一下"), config)
 print(out["report"])               # 末尾会多一段「人工确认」
 ```
 
-> CLI 入口（`python main.py review`）尚未实现，目前在计划中。
+### 用法三：命令行
+
+```bash
+# 审查工作区改动（对比 HEAD）
+python main.py review
+
+# 审查指定的 diff 文件
+python main.py review --diff your.diff
+
+# 对比最近 3 次提交的累计改动
+python main.py review --since HEAD~3
+
+# 只输出一行结论，不打印完整报告
+python main.py review --quiet
+```
+
+退出码约定：`0` = 无 P0，`1` = 存在 P0，`2` = 运行错误。
+
+### 用法四：挂到 git hook
+
+`hooks/pre-commit` 是一个可直接使用的模板：
+
+```bash
+cp hooks/pre-commit /path/to/your-project/.git/hooks/pre-commit
+chmod +x /path/to/your-project/.git/hooks/pre-commit
+```
+
+装上后每次 `git commit` 会自动审查**暂存区**内容，有 P0 就阻止提交；`git commit --no-verify` 可跳过。
+
+> 每次提交会多花 5-10 秒（三次模型调用）。开发期频繁提交时不建议常开——**什么时候该拦、什么时候不该拦，比怎么配 hook 更重要**。
 
 ## 已知局限
 
@@ -163,5 +196,5 @@ print(out["report"])               # 末尾会多一段「人工确认」
 ## 后续计划
 
 - [ ] 补充 schema 上下文（表结构、索引），解决索引类漏报
-- [ ] CLI 入口与 pre-commit hook 集成
 - [ ] 样本扩到 100 个，按代码类型分层抽样
+- [ ] 接入 CI（GitHub Actions），在 PR 上自动评论审查结果
