@@ -42,7 +42,7 @@ def merge_node(state: dict)->dict:
                 "file":file,
                 "line":line,
                 "category":sorted(cats),
-                "note": "/".join(sorted(cats))+"都指向这一行，建议合并考虑",
+                "note": " / ".join(sorted(cats)) + " 都指向这一行，建议合并考虑",
             })
     #--------------------4.排序，保证每次输出顺序一致--------------
     merged.sort(key=lambda f:(_SEVERITY_ORDER.get(f.severity,9),f.file,f.start_line))

@@ -24,11 +24,11 @@ def _render_one(f: Finding)->str:
     #“###”是三级标题
     head=f"### `{f.file}:{f.start_line}`"
     #“**···**”是加粗
-    meta=f"**{f.message}**（{f.category}·置信度{f.confidence:.2f}）"
+    meta=f"**{f.message}**（{f.category} · 置信度{f.confidence:.2f}）"
 
     parts=[head,meta]
     if f.suggestion:
-        parts.append(f"建议： {f.suggestion}")
+        parts.append(f"建议：{f.suggestion}")
     else:
         parts.append("建议：*（模型未给出具体写法）*")
     return "\n\n".join(parts)
@@ -62,7 +62,7 @@ def report_node(state: dict)->dict:
         group=[f for f in ordered if f.severity==sev]
         if not group:
             continue
-        lines.append(f"## {sev}·{_SEVERITY_LABEL[sev]}({len(group)}条)")
+        lines.append(f"## {sev} · {_SEVERITY_LABEL[sev]}（{len(group)} 条）")
         lines.append("")
         for f in group:
             lines.append(_render_one(f))
