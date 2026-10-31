@@ -34,7 +34,8 @@ def _render_one(f: Finding)->str:
     return "\n\n".join(parts)
 
 def report_node(state: dict)->dict:
-    findings=state.get("findings") or []
+    # 优先用merge（merge跑过），否则退回findings（merge没加的时候）
+    findings=state.get("merged") or state.get("findings") or []
     conflicts=state.get("conflicts") or []
     human_note=state.get("human_note")
     #情况一：什么都没有发现

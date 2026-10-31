@@ -73,7 +73,7 @@ def main():
 
         content = sample.read_text(encoding="utf-8")
         out = graph.invoke({"patch": make_diff(f"{name}.py", content)})
-        findings = out.get("findings", [])
+        findings = out.get("merged") or out.get("findings") or []
 
         if expected_list:
             # 有坑的样本：算召回

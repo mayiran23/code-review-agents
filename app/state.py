@@ -59,6 +59,9 @@ class ReviewState(TypedDict):
     #---------------审查结果---------------
     findings: Annotated[list[Finding],add]
 
+    #新增merge后的结果，覆盖语义
+    merged: list[Finding]
+
     #两个审查员对同一位置结论矛盾时记在这里
     conflicts: list[dict]
 

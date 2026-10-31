@@ -1,5 +1,5 @@
 def total_amount(orders):
     total = 0
-    for o in orders:
-        total += o["amount"]
+    for order in orders:
+        total += order["amount"]
     return total

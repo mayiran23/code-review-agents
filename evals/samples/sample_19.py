@@ -1,4 +1,3 @@
-
 import logging
 import db
 
@@ -11,5 +10,7 @@ def delete_order(user_id, order_id):
         raise OrderNotFound(order_id)
     if order[0]["user_id"] != user_id:
         raise PermissionDenied(order_id)
-    db.execute("UPDATE orders SET deleted = 1 WHERE id = %s", order_id)
-    log.info("删除订单 order_id=%s user_id=%s", order_id, user_id)
+    affected = db.execute("UPDATE orders SET deleted = 1 WHERE id = %s", order_id)
+    if affected == 0:
+        raise OrderNotFound(order_id)
+    log.info("删除订单成功 order_id=%s user_id=%s", order_id, user_id)
