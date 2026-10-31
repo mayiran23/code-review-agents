@@ -65,6 +65,9 @@ class ReviewState(TypedDict):
     #两个审查员对同一位置结论矛盾时记在这里
     conflicts: list[dict]
 
+    #新增：True=跳过人工确认（评估时用）
+    auto_approve: bool
+
     #-------------决策--------------------
     #route节点写入，条件边读它决定走哪个出口。
     #这三个值必须与条件边函数的返回值严格对应
