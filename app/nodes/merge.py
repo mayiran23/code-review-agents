@@ -23,28 +23,17 @@ def merge_node(state: dict)->dict:
     #行号差1就合并会把两个不同问题揉在一起，得不偿失
     groups: dict[tuple,list[Finding]]={}
     for f in findings:
-        groups.setdefault((f.file,f.start_line),[]).append(f)
+        groups.setdefault((f.file,f.start_line,f.category),[]).append(f)
 
     merged: list[Finding]=[]
     conflicts: list[dict]=[]
 
-    for (file,line),items in groups.items():
-        #---------2.同位置只留最严重的一条------------
-        best=min(items,key=lambda x: _SEVERITY_ORDER.get(x.severity,9))
+    # ---------- 2. 同位置同类别，只留最严重的一条 ----------
+    for items in groups.values():
+        best = min(items, key=lambda x: _SEVERITY_ORDER.get(x.severity, 9))
         merged.append(best)
 
-        #---------3.同一位置出现多个类别->冲突--------
-        #不判断“结论是否真的矛盾”（模型判断不了）
-        #只提示“这一行有多个维度的意见”，让人自己取舍
-        cats={x.category for x in items}
-        if len(cats)>=2:
-            conflicts.append({
-                "file":file,
-                "line":line,
-                "category":sorted(cats),
-                "note": " / ".join(sorted(cats)) + " 都指向这一行，建议合并考虑",
-            })
-    #--------------------4.排序，保证每次输出顺序一致--------------
-    merged.sort(key=lambda f:(_SEVERITY_ORDER.get(f.severity,9),f.file,f.start_line))
+    # ---------- 3. 排序：文件 → 行号 → 严重程度 ----------
+    merged.sort(key=lambda f: (f.file, f.start_line, _SEVERITY_ORDER.get(f.severity, 9)))
 
-    return {"merged":merged,"conflicts":conflicts}
+    return {"merged": merged, "conflicts": []}
