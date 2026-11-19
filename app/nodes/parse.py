@@ -24,10 +24,13 @@ def parse_node(state: dict) -> dict:
     try:
         #把一段diff纯文本变成python里能用代码操作的对象，正好对应diff的三层结构
         patch=PatchSet(patch_text)
-    except UnidiffParseError:
+    except UnidiffParseError as e:
         #情况二：不是合法diff（比如误传了整个文件内容）
         #同样不抛异常，交给下游判断
-        return {"files": []}
+        return {
+            "files": [],
+            "errors": [f"diff解析失败，可能不是完整diff或被截断在hunk中间：{e}"],
+        }
 
     files=[]
     #遍历每个文件

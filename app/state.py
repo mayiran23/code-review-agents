@@ -59,6 +59,10 @@ class ReviewState(TypedDict):
     #---------------审查结果---------------
     findings: Annotated[list[Finding],add]
 
+    #各环节失败的原因（解析失败、审查员调用失败）。
+    #必须和findings一样用add合并：三路并行会同时写这个字段
+    #不声明reducer会直接报InvalidUpdateError
+    errors: Annotated[list[str],add]
     #新增merge后的结果，覆盖语义
     merged: list[Finding]
 

@@ -5,6 +5,8 @@ security/performance/style 除了【看哪类问题】不同，其余完全一�
 拼上下文->调模型->兜异常->返回findings
 所以抽成工厂函数，避免重复代码
 """
+import sys
+
 from app.llm import llm
 from pathlib import Path
 from app.state import Finding
@@ -79,8 +81,13 @@ def make_reviewer(category: str,prompt_file: str):
             ])
         except Exception as e:
             #模型超时/限流/返回格式不合规，不能让整条流水线崩
-            print(f"[{category}]模型调用失败：{e}")
-            return {"findings": []}
+            #⚠️ 必须写 stderr：MCP server 用 stdout 传 JSON-RPC，往 stdout 打一行就会污染协议流，
+            #   宿主表现为「连接断开 / 工具不可用」，而不是「这次审查失败」
+            print(f"[{category}]模型调用失败：{e}", file=sys.stderr)
+            return {
+                "findings": [],
+                "errors": [f"{category}审查员调用失败：{type(e).__name__}: {e}"],
+            }
 
         #*强制改写category*
         #模型可能返回别的分类（比如给security节点返回performance）
