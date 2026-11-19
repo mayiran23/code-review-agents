@@ -46,6 +46,9 @@ MAX_DIFF_LINES = 1500
 #超长时最多列几个文件；再多就折叠成一行，别把上下文塞满
 MAX_FILES_LISTED = 10
 
+#未跟踪文件提示里最多列几个；再多就折叠
+MAX_UNTRACKED_LISTED = 5
+
 #git子进程超时（秒）：大仓库或网络盘卡住时，stdio是串行，整个server都会被拖死
 GIT_TIMEOUT=30
 
@@ -133,6 +136,49 @@ def _too_long(diff: str, line_count: int) -> str:
         f"\n也可以缩小范围重试，例如 review_workspace(repo_path=..., since=\"HEAD~1..HEAD\")。"
     )
     return "\n".join(out)
+
+
+def _untracked_note(target: Path) -> str:
+    """返回「有未跟踪文件没被审查」的提示；没有就返回空串。
+
+    为什么每次都要查：
+      git diff 看不到未跟踪文件，但它们往往正是用户刚写的新代码。
+      只在「diff 为空」时检查是不够的——有改动时它们照样被漏掉，
+      而报告会显示「未发现问题」，用户以为全审了。
+      查一次约 50ms，比让调用方自己想起来可靠得多。
+    """
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(target), "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=GIT_TIMEOUT,
+        )
+    except Exception as e:
+        #这只是一条附加提示，失败了不该让整次调用崩；但要留日志（带 target），
+        #否则以后排查会觉得「明明有未跟踪文件却没提示」
+        print(f"[review] ls-files 失败（目标：{target}）：{e}", file=sys.stderr, flush=True)
+        return ""
+
+    if r.returncode != 0:
+        #git 失败不抛异常，只返回非0；不检查就会静默少一条提示，而且完全没有痕迹
+        print(
+            f"[review] ls-files 返回 {r.returncode}（目标：{target}）：{r.stderr.strip()}",
+            file=sys.stderr, flush=True,
+        )
+        return ""
+
+    names = [n for n in (r.stdout or "").strip().splitlines() if n]
+    if not names:
+        return ""
+
+    shown = "、".join(names[:MAX_UNTRACKED_LISTED])
+    if len(names) > MAX_UNTRACKED_LISTED:
+        shown += "…"
+
+    return (
+        f"还有 {len(names)} 个未跟踪文件不在 git diff 范围内（未被审查）：{shown}。"
+        f"如需审查，先 git add -N 再跑一次。"
+    )
 
 
 def _render(out: dict, elapsed: float, line_count: int) -> str:
@@ -261,7 +307,7 @@ def review_workspace(repo_path: str, since: str = "HEAD") -> str:
             text=True,  # 返回str而不是bytes
             encoding="utf-8",
             errors="replace",  # 解码失败时换成占位符继续，别让整次调用失败
-            timeout=30,
+            timeout=GIT_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
         return f"git diff 超时（{GIT_TIMEOUT}s）：{target}"
@@ -270,30 +316,21 @@ def review_workspace(repo_path: str, since: str = "HEAD") -> str:
     if r.returncode != 0:
         return f"git diff 执行失败（目标：{target}）：{r.stderr.strip()}"
 
+    #未跟踪文件不在 git diff 里，但可能是用户刚写的新代码。
+    #每次都要查——只在 diff 为空时查，会让「有改动 + 有新文件」这种情况悄悄漏掉
+    note = _untracked_note(target)
+
     if not r.stdout.strip():
-        # git diff 不包含未跟踪文件：用户新建了文件但没 git add 时，这里就是空的。
-        # 不解释清楚，模型会当成「没问题」，用户也不知道为什么。
-        try:
-            others = subprocess.run(
-                ["git", "-C", str(target), "ls-files", "--others", "--exclude-standard"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT,
-            )
-            names = [n for n in (others.stdout or "").strip().splitlines() if n]
-        except Exception as e:
-            print(f"[review]ls-files失败: {e}",file=sys.stderr,flush=True)
-            names=[]
-        if names:
-            shown = "、".join(names[:5]) + ("…" if len(names) > 5 else "")
-            return (
-                f"{target} 相对 {since} 没有任何已跟踪文件的改动。\n"
-                f"注意：还有 {len(names)} 个未跟踪文件不在 git diff 范围内，不会被审查：{shown}\n"
-                f"如需审查，先用 git add 加入暂存区。"
-            )
+        if note:
+            return f"{target} 相对 {since} 没有任何已跟踪文件的改动。\n{note}"
         return f"{target} 相对 {since} 没有任何改动，无需审查。"
 
-        # 把「实际审的绝对路径」写进结果头部：路径传错时模型能一眼看出来，
-        # 而不是默默审了另一个仓库还不报错
-    return f"审查目标：{target}（since={since}）\n\n" + review_diff(r.stdout)
+    #把「实际审的绝对路径」写进结果头部：路径传错时模型能一眼看出来，
+    #而不是默默审了另一个仓库还不报错
+    head = f"审查目标：{target}（since={since}）"
+    if note:
+        head += "\n" + note
+    return head + "\n\n" + review_diff(r.stdout)
 
 if __name__ == "__main__":
     server.run()
