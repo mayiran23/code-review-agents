@@ -17,6 +17,7 @@ git diff 是取数据，Agent 自己有终端能做；审查是处理数据，�
     不截断、不静默丢弃，直接返回「超了多少行、都有哪些文件、建议怎么分批」。
     行级截断会让 parse 拿到残缺的 hunk 而解析失败，最终输出「未发现问题」——那是静默撒谎。
 """
+
 #起子进程跑外部命令，让python去启动别的程序（git等），在这个项目中就是要跑git diff
 import subprocess
 #访问解释器状态：模块搜索路径、命令行参数、标准输入输出、退出
@@ -44,6 +45,9 @@ MAX_DIFF_LINES = 1500
 
 #超长时最多列几个文件；再多就折叠成一行，别把上下文塞满
 MAX_FILES_LISTED = 10
+
+#git子进程超时（秒）：大仓库或网络盘卡住时，stdio是串行，整个server都会被拖死
+GIT_TIMEOUT=30
 
 
 def _split_files(diff: str) -> list[tuple[str, int]]:
@@ -203,6 +207,7 @@ def review_diff(diff: str) -> str:
     except Exception as e:
         #绝不让异常抛出去：工具抛异常在宿主里可能被判成「server 挂了」而断连，
         #返回一句人话，模型还能自己决定下一步
+        print(f"[review] invoke失败：{type(e).__name__}: {e}",file=sys.stderr,flush=True)
         return f"审查失败：{type(e).__name__}: {e}"
 
     return _render(out, time.time() - started, line_count)
@@ -230,29 +235,64 @@ def review_workspace(repo_path: str, since: str = "HEAD") -> str:
     参数：
     - repo_path：git 仓库的绝对路径。必填，不会替你猜
       不确定时先问用户，或从宿主给出的工作区路径里取。路径错了会返回明确的失败原因。
-    - since：比较基准。默认 "HEAD" = 工作区全部未提交改动（暂存+未暂存）；
+    - since：比较基准。默认 "HEAD" = 工作区全部未提交改动（暂存+未暂存，不含未跟踪文件）；
       "HEAD~3" = 相对三次提交前的全部差异（含未提交部分）；
       只想看那几次提交本身，用范围写法 "HEAD~3..HEAD"。
     """
-    #用git -C 而不是os.chdir：
-    #改工作目录是全局副作用，会影响同进程里其他逻辑
-    r = subprocess.run(
-        ["git", "-C", repo_path, "diff", since],  #位置参数，命令
-        capture_output=True,  #把子进程的输出收进返回值，不往父进程的控制台打
-        text=True,            #返回str而不是bytes
-        encoding="utf-8",
-        errors="replace",     #解码失败时换成占位符继续，别让整次调用失败
-    )
-    #returncode是进程结束时的退出码，0表示成功
-    if r.returncode != 0:
-        target= str(Path(repo_path).resolve())
-        return f"git diff 执行失败(目标：{target})：{r.stderr.strip()}"
-    if not r.stdout.strip():
-        return f"{repo_path} 相对 {since} 没有任何改动，无需审查。"
+    #repo_path和since都是模型填的参数，不能直接拼进命令行
+    #（1）先规范化成绝对路径并确认是目录：相对路径会按宿主的cwd解析，而那是用户主目录
+    #（2）since以“-”开头会被git当成选项（如-p、-output），必须拒
+    target=Path(repo_path).expanduser().resolve()
+    if not target.is_dir():
+        return f"repo_path不是一个目录：{target}"
+    if not since or since.startswith("-") or any(c.isspace() for c in since):
+        return(
+            f"since参数不合法：{since!r}."
+            "只接受修订号或范围，例如HEAD、HEAD~3、HEAD~3..HEAD、main。"
+        )
+        # 用git -C 而不是os.chdir：改工作目录是全局副作用，会影响同进程里其他逻辑。
+        # timeout 必须有：大仓库或网络盘卡住时，stdio 是串行的，整个 server 都会被拖死。
+        # --no-color / --no-ext-diff：用户配了 color.ui=always 或 diff.external 时，
+        #  输出会带 ANSI 转义符或变成别的格式 → unidiff 解析失败 → 又一条「未发现问题」
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(target), "diff", "--no-color", "--no-ext-diff", since],
+            capture_output=True,  # 把子进程的输出收进返回值，不往父进程的控制台打
+            text=True,  # 返回str而不是bytes
+            encoding="utf-8",
+            errors="replace",  # 解码失败时换成占位符继续，别让整次调用失败
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return f"git diff 超时（{GIT_TIMEOUT}s）：{target}"
 
-    #把「实际审的绝对路径」写进结果头部：路径传错时模型能一眼看出来，
-    #而不是默默审了另一个仓库还不报错
-    target = str(Path(repo_path).resolve())
+        # returncode是进程结束时的退出码，0表示成功
+    if r.returncode != 0:
+        return f"git diff 执行失败（目标：{target}）：{r.stderr.strip()}"
+
+    if not r.stdout.strip():
+        # git diff 不包含未跟踪文件：用户新建了文件但没 git add 时，这里就是空的。
+        # 不解释清楚，模型会当成「没问题」，用户也不知道为什么。
+        try:
+            others = subprocess.run(
+                ["git", "-C", str(target), "ls-files", "--others", "--exclude-standard"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT,
+            )
+            names = [n for n in (others.stdout or "").strip().splitlines() if n]
+        except Exception as e:
+            print(f"[review]ls-files失败: {e}",file=sys.stderr,flush=True)
+            names=[]
+        if names:
+            shown = "、".join(names[:5]) + ("…" if len(names) > 5 else "")
+            return (
+                f"{target} 相对 {since} 没有任何已跟踪文件的改动。\n"
+                f"注意：还有 {len(names)} 个未跟踪文件不在 git diff 范围内，不会被审查：{shown}\n"
+                f"如需审查，先用 git add 加入暂存区。"
+            )
+        return f"{target} 相对 {since} 没有任何改动，无需审查。"
+
+        # 把「实际审的绝对路径」写进结果头部：路径传错时模型能一眼看出来，
+        # 而不是默默审了另一个仓库还不报错
     return f"审查目标：{target}（since={since}）\n\n" + review_diff(r.stdout)
 
 if __name__ == "__main__":
